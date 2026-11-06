@@ -1,0 +1,15 @@
+{
+  "name": "strata",
+  "version": "0.3.0",
+  "private": false,
+  "description": "Strata: lightweight Git-backed key-value store with an operation journal, periodic snapshots and asynchronous publish queue (local JSON or Codeberg).",
+  "type": "module",
+  "engines": {
+    "node": ">=20.6"
+  },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env src/server.js",
+    "dev": "node --watch --env-file-if-exists=.env src/server.js",
+    "test": "node --test"
+  }
+}

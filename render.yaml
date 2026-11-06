@@ -1,0 +1,33 @@
+services:
+  - type: web
+    name: strata
+    runtime: node
+    plan: starter
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: STORAGE
+        value: codeberg
+      - key: JOURNAL_SNAPSHOT_EVERY
+        value: "10"
+      - key: WRITE_QUEUE_DEBOUNCE_MS
+        value: "2000"
+      - key: WRITE_QUEUE_INTERVAL_MS
+        value: "5000"
+      - key: CODEBERG_API
+        value: https://codeberg.org/api/v1
+      - key: CODEBERG_OWNER
+        sync: false
+      - key: CODEBERG_REPO
+        sync: false
+      - key: CODEBERG_BRANCH
+        value: main
+      - key: CODEBERG_FILE
+        value: snapshot.json
+      - key: CODEBERG_TOKEN
+        sync: false
+      - key: API_TOKEN
+        sync: false
+      - key: CORS_ORIGIN
+        sync: false

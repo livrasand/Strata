@@ -1,0 +1,61 @@
+{
+  "name": "Strata",
+  "description": "Lightweight Git-backed key-value store: operation journal, periodic snapshots and asynchronous publish queue (local JSON or Codeberg).",
+  "website": "https://github.com/livrasand/Strata",
+  "repository": "https://github.com/livrasand/Strata",
+  "logo": "logo.jpeg",
+  "success_url": "/health",
+  "env": {
+    "STORAGE": {
+      "description": "Backing store. Heroku containers have no persistent disk, so use Codeberg.",
+      "value": "codeberg"
+    },
+    "CODEBERG_API": {
+      "description": "Codeberg HTTP API base URL.",
+      "value": "https://codeberg.org/api/v1"
+    },
+    "CODEBERG_OWNER": {
+      "description": "Your Codeberg user."
+    },
+    "CODEBERG_REPO": {
+      "description": "Private Codeberg repository holding snapshot.json and the journal."
+    },
+    "CODEBERG_BRANCH": {
+      "description": "Branch holding the database.",
+      "value": "main"
+    },
+    "CODEBERG_FILE": {
+      "description": "Snapshot path inside the repository.",
+      "value": "snapshot.json"
+    },
+    "CODEBERG_TOKEN": {
+      "description": "Codeberg access token with read+write on the repository (never exposed to browsers)."
+    },
+    "API_TOKEN": {
+      "description": "Optional. Long random secret required as Authorization: Bearer <token>.",
+      "required": false
+    },
+    "CORS_ORIGIN": {
+      "description": "Optional. Exact origin of your app (e.g. https://app.example) for public APIs.",
+      "required": false
+    },
+    "JOURNAL_SNAPSHOT_EVERY": {
+      "description": "Journal operations published before a new snapshot is written.",
+      "value": "10"
+    },
+    "WRITE_QUEUE_DEBOUNCE_MS": {
+      "description": "Idle time after the last mutation before publishing a burst.",
+      "value": "2000"
+    },
+    "WRITE_QUEUE_INTERVAL_MS": {
+      "description": "Minimum rest between publish cycles (also the retry delay).",
+      "value": "5000"
+    }
+  },
+  "formation": {
+    "web": {
+      "quantity": 1,
+      "size": "basic"
+    }
+  }
+}

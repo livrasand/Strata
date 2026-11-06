@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>strata — the kv store that lives in git</title>
+<meta name="description" content="Strata is a free, self-hosted, Git-backed key-value store. No quotas, no caps. Every write is a commit to your repository — versioned and auditable. Deploy to Vercel, Netlify, Docker, Heroku, Render or plain Node.">
+<meta property="og:title" content="strata — the kv store that lives in git">
+<meta property="og:description" content="Free, self-hosted, Git-backed key-value store. Your data as commits: versioned, auditable, yours.">
+<style>
+:root {
+  --bg: #1d1e28;
+  --panel: #171821;
+  --border: rgba(255, 255, 255, 0.09);
+  --text: #e6e6e8;
+  --muted: rgba(230, 230, 232, 0.55);
+  --faint: rgba(230, 230, 232, 0.3);
+  --accent: #78e2a0;
+  --warn: #f0a000;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 14px;
+  line-height: 1.85;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.bar {
+  background: var(--accent);
+  color: #14231b;
+  font-size: 12px;
+  line-height: 1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 9px 18px;
+  gap: 16px;
+}
+.bar a { color: inherit; font-weight: 700; }
+.bar a:hover { text-decoration: none; opacity: .7; }
+.bar .session { font-weight: 700; }
+.bar .tabs { display: flex; gap: 14px; flex-wrap: wrap; }
+.bar .tabs a { font-weight: 400; }
+.bar .side { white-space: nowrap; opacity: .75; }
+
+.wrap { max-width: 720px; margin: 0 auto; padding: 0 22px; }
+
+.logo {
+  padding-top: 64px;
+  color: var(--accent);
+  font-size: 13px;
+  line-height: 1.3;
+  white-space: pre;
+  overflow-x: auto;
+  user-select: text;
+}
+h1 {
+  font-size: 15px;
+  font-weight: 400;
+  color: var(--muted);
+  margin-top: 26px;
+  max-width: 58ch;
+}
+h1 b { color: var(--text); font-weight: 700; }
+.tag {
+  margin-top: 18px;
+  color: var(--muted);
+  max-width: 60ch;
+}
+.tag b { color: var(--text); font-weight: 400; }
+
+.ctas { margin: 30px 0 84px; display: flex; flex-direction: column; gap: 7px; align-items: flex-start; }
+.cta { color: var(--muted); }
+.cta::before { content: "$ "; color: var(--faint); }
+.cta a { font-weight: 700; }
+.cta a::before { content: "[ "; color: var(--faint); }
+.cta a::after { content: " ]"; color: var(--faint); }
+.cta .r { color: var(--muted); }
+
+main { padding-bottom: 72px; }
+section { margin: 62px 0; }
+section:first-child { margin-top: 0; }
+
+.cmd { color: var(--muted); margin-bottom: 14px; }
+.cmd::before { content: "$ "; color: var(--faint); }
+.cmd .root { color: var(--faint); }
+.cmd em { font-style: normal; color: var(--text); font-weight: 700; }
+.cmd .cm { color: var(--accent); }
+
+.out { color: var(--muted); max-width: 62ch; }
+.out b { color: var(--text); font-weight: 700; }
+.out em { font-style: normal; color: var(--accent); }
+
+pre.box {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  padding: 20px 22px;
+  overflow-x: auto;
+  font-size: 13px;
+  line-height: 1.9;
+}
+.c { color: var(--text); }
+.c::before { content: "$ "; color: var(--faint); }
+.o { color: var(--muted); }
+.o::before { content: "  "; }
+.k { color: var(--accent); outline: none; }
+
+dl.help { display: grid; grid-template-columns: 16ch 1fr; column-gap: 14px; row-gap: 2px; font-size: 13.5px; }
+dl.help dt { color: var(--accent); }
+dl.help dd { color: var(--muted); }
+dl.help dd b { color: var(--text); font-weight: 400; }
+
+table.plain { border-collapse: collapse; font-size: 13.5px; width: 100%; }
+table.plain th {
+  text-align: left;
+  color: var(--faint);
+  font-weight: 400;
+  padding: 6px 18px 6px 0;
+  border-bottom: 1px dashed var(--border);
+}
+table.plain td { padding: 7px 18px 7px 0; color: var(--muted); vertical-align: baseline; }
+table.plain td:first-child { color: var(--accent); font-weight: 700; white-space: nowrap; }
+table.plain td.m { color: var(--warn); }
+table.plain td b { color: var(--text); font-weight: 400; }
+
+.diag {
+  color: var(--faint);
+  font-size: 12.5px;
+  line-height: 1.9;
+  white-space: pre;
+  overflow-x: auto;
+  padding: 4px 0 20px;
+  border-bottom: 1px dashed var(--border);
+  margin-bottom: 20px;
+}
+.diag b { color: var(--accent); font-weight: 400; }
+
+.end { text-align: center; color: var(--faint); font-size: 12px; margin: 90px 0 60px; }
+.end::before { content: "~ "; }
+.end::after { content: " ~"; }
+
+@media (max-width: 560px) {
+  dl.help { grid-template-columns: 12ch 1fr; }
+  .bar .side { display: none; }
+  .logo { padding-top: 44px; }
+}
+</style>
+</head>
+<body>
+
+<div class="bar">
+  <span class="session">strata*</span>
+  <div class="tabs">
+    <a href="#try">0:try</a>
+    <a href="#how">1:how</a>
+    <a href="#deploy">2:deploy</a>
+    <a href="#api">3:api</a>
+  </div>
+  <span class="side">livrasand@github — node 20.6+</span>
+</div>
+
+<div class="wrap">
+
+<pre class="logo">
+  █████  █████  ████    ███   █████   ███
+  █        █    █   █  █   █    █    █   █
+  ████     █    █████  █████    █    █████
+      █    █    █  █   █   █    █    █   █
+  █████    █    █   █  █   █    █    █   █
+</pre>
+
+<h1>a key-value store whose storage engine is <b>git</b>.</h1>
+
+<p class="tag">
+free, self-hosted, unlimited — where redis has usage tiers.
+setup asks a few more minutes of you than a managed service does,
+but every write ends up as a commit to your own repository:
+<b>versioned, diffable, auditable</b>. built to ship your first project on.
+if it later earns money and outgrows strata, moving to redis or any other
+database is an export, not a rewrite.
+</p>
+
+<div class="ctas">
+  <p class="cta"><a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Flivrasand%2Fstrata&env=STORAGE,CODEBERG_OWNER,CODEBERG_REPO,CODEBERG_TOKEN">deploy on vercel</a> <span class="r">one-click, free tier</span></p>
+  <p class="cta"><a href="https://app.netlify.com/start/deploy?repository=https://github.com/livrasand/strata">deploy on netlify</a></p>
+  <p class="cta"><a href="https://render.com/deploy?repo=https://github.com/livrasand/strata">deploy on render</a></p>
+  <p class="cta"><a href="#deploy">docker / heroku / node →</a></p>
+</div>
+
+<main>
+
+<section id="try">
+  <p class="cmd"><em>try it</em> <span class="root">— the whole api fits on one screen</span></p>
+  <pre class="box">
+<span class="c">curl -X PUT $URL/kv/welcome -H "Content-Type: application/json" -d '{"value":"hello","ttl":3600}'</span>
+<span class="o">{"ok":true,"key":"welcome","seq":43,"queued":false,"persisted":true}</span>
+
+<span class="c">curl $URL/kv/welcome</span>
+<span class="o">{"key":"welcome","value":"hello"}</span>
+
+<span class="c">curl $URL/keys</span>
+<span class="o">{"keys":["welcome","session:9f2c","flag:beta"]}</span>
+
+<span class="c">curl $URL/health</span>
+<span class="o">{"ok":true,"mode":"long","journal":{"seq":43,"pendingOps":0,"snapshotEvery":10}}</span></pre>
+</section>
+
+<section id="how">
+  <p class="cmd"><em>strata --help</em></p>
+  <dl class="help">
+    <dt>--git</dt><dd>every write is a commit. history <b>is</b> the database — grep it, revert it, audit it.</dd>
+    <dt>--journal</dt><dd>one tiny json op appended per change; snapshot consolidates every 10 ops.</dd>
+    <dt>--ttl</dt><dd>keys expire on their own. urls, tokens, feature flags.</dd>
+    <dt>--token</dt><dd>set <em>API_TOKEN</em> and everything answers 401 without <em>Bearer</em>. timing-safe.</dd>
+    <dt>--concurrency</dt><dd>instances racing on the same op renegotiate the seq and retry. no lost writes.</dd>
+    <dt>--deps</dt><dd>zero. node ≥ 20.6 is the entire stack.</dd>
+  </dl>
+</section>
+
+<section id="modes">
+  <p class="cmd"><em>cat how-it-runs.txt</em></p>
+  <div class="diag">
+client ─▶ PUT /kv/x ─▶ <b>journal/000043.json</b> (one small commit per op)
+    │
+    └─ every 10 ops ─▶ <b>snapshot.json</b> ─▶ old journal entries compacted
+  </div>
+  <table class="plain">
+    <tr><th></th><th>long-lived — node · docker · heroku · render</th><th>serverless — vercel · netlify</th></tr>
+    <tr><td>reads</td><td>memory, zero round-trips</td><td>revalidated per request</td></tr>
+    <tr><td>writes</td><td>instant reply, async queue</td><td>committed before answering</td></tr>
+    <tr><td>storage</td><td>local file or codeberg</td><td>codeberg</td></tr>
+  </table>
+</section>
+
+<section id="deploy">
+  <p class="cmd"><em>deploy</em> <span class="root">— pick your platform</span></p>
+  <table class="plain">
+    <tr><td>vercel</td><td>button above; needs <b>STORAGE</b> + <b>CODEBERG_*</b> vars</td></tr>
+    <tr><td>netlify</td><td><b>netlify.toml</b> is already in the repo</td></tr>
+    <tr><td>docker</td><td><b>docker run -p 8787:8787 --env-file .env strata</b></td></tr>
+    <tr><td>heroku</td><td><b>app.json</b> manifest, deploys from your dashboard</td></tr>
+    <tr><td>render</td><td><b>render.yaml</b>, healthcheck on <b>/health</b></td></tr>
+    <tr><td>node</td><td><b>npm install && npm start</b> — that's the whole install</td></tr>
+  </table>
+</section>
+
+<section id="api">
+  <p class="cmd"><em>man strata</em> <span class="root">— API</span></p>
+  <table class="plain">
+    <tr><th>method</th><th>path</th><th></th></tr>
+    <tr><td class="m">GET</td><td>/</td><td>this page</td></tr>
+    <tr><td class="m">GET</td><td>/health</td><td>journal status; never requires auth</td></tr>
+    <tr><td class="m">GET</td><td>/keys</td><td>list non-expired keys</td></tr>
+    <tr><td class="m">GET</td><td>/kv/:key</td><td>read a value</td></tr>
+    <tr><td class="m">PUT</td><td>/kv/:key</td><td>write <b>{"value":…,"ttl":3600}</b></td></tr>
+    <tr><td class="m">DELETE</td><td>/kv/:key</td><td>delete a key</td></tr>
+  </table>
+  <p class="cmd" style="margin-top:22px"><em>figure out responses</em></p>
+  <p class="out">writes reply with <em>seq</em> (journal position) plus <em>queued</em>/<em>persisted</em>,
+  so the client always knows which durability guarantee it actually got.</p>
+</section>
+
+</main>
+
+<p class="end">EOF</p>
+
+</div>
+
+<div class="bar">
+  <span class="session"><a href="https://github.com/livrasand/Strata">github.com/livrasand/Strata</a></span>
+  <span class="side">MIT — free forever, migrate to redis whenever you outgrow it</span>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,18 @@
+[build]
+  publish = "public"
+  command = "mkdir -p public && cp index.html public/"
+
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
+[template.environment]
+  STORAGE = "codeberg (required for Netlify)"
+  CODEBERG_API = "https://codeberg.org/api/v1"
+  CODEBERG_OWNER = "Your Codeberg user"
+  CODEBERG_REPO = "Your Codeberg repository"
+  CODEBERG_BRANCH = "main"
+  CODEBERG_FILE = "snapshot.json"
+  CODEBERG_TOKEN = "Codeberg access token (read + write)"
+  API_TOKEN = "Optional secret to protect the API"
+  CORS_ORIGIN = "Optional exact origin of your app"

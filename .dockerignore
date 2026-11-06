@@ -1,0 +1,8 @@
+node_modules/
+hugo-theme-re-terminal-main/
+data/
+test/
+.vercel/
+.netlify/
+.env
+.DS_Store

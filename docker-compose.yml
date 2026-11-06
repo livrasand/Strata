@@ -1,0 +1,31 @@
+services:
+  strata:
+    build: .
+    image: strata:local
+    ports:
+      - "8787:8787"
+    environment:
+      # Storage: file is persistent here because of the ./data volume below;
+      # change to codeberg + token to keep commits in a Codeberg repository.
+      STORAGE: ${STORAGE:-file}
+      DATABASE_FILE: /srv/app/data/database.json
+
+      # --- Codeberg backend (STORAGE=codeberg) ---
+      # CODEBERG_API: https://codeberg.org/api/v1
+      # CODEBERG_OWNER: your-user
+      # CODEBERG_REPO: your-database-repo
+      # CODEBERG_BRANCH: main
+      # CODEBERG_FILE: snapshot.json
+      # CODEBERG_TOKEN: your-access-token
+
+      # --- API protection ---
+      # API_TOKEN: replace-with-a-long-random-secret
+      # CORS_ORIGIN: https://your-app.example
+
+      # --- Write queue ---
+      WRITE_QUEUE_DEBOUNCE_MS: ${WRITE_QUEUE_DEBOUNCE_MS:-2000}
+      WRITE_QUEUE_INTERVAL_MS: ${WRITE_QUEUE_INTERVAL_MS:-5000}
+      JOURNAL_SNAPSHOT_EVERY: ${JOURNAL_SNAPSHOT_EVERY:-10}
+    volumes:
+      - ./data:/srv/app/data
+    restart: unless-stopped
