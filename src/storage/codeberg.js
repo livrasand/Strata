@@ -11,6 +11,10 @@ import {
 } from "../journal.js";
 
 const COMPACT_CHUNK = 100;
+// Small pending batches are read file-by-file: the branch archive endpoint is
+// a known slow path on Gitea/Codeberg (on-demand generation) and regularly
+// 504s on repos with heavy history, paying its cost on every load.
+const ARCHIVE_MIN_OPS = 16;
 const DEFAULT_TIMEOUT_MS = 10000;
 const READ_RETRIES = 3;
 // Transient gateway failures from the git host: worth one more attempt.
@@ -66,19 +70,38 @@ export class CodebergStorage {
       .join("/")}`;
   }
 
-  async request(url, options = {}) {
+  labelFor(url, options) {
+    return `${(options.method ?? "GET").toUpperCase()} ${url}`;
+  }
+
+  /** Adds method + URL context to low-level (timeout/network) errors. */
+  wrapError(error, url, options) {
+    if (error.status === undefined && !error.message.startsWith("Codeberg API")) {
+      error.message = `${this.labelFor(url, options)}: ${error.message}`;
+    }
+    return error;
+  }
+
+  /**
+   * Shared fetch loop: hard per-request timeout, and for GETs up to
+   * READ_RETRIES attempts with linear backoff on transient gateway errors
+   * (502/503/504) and network failures. Writes are never retried — an
+   * ambiguous failure must not duplicate a commit or journal op.
+   */
+  async attemptFetch(url, options, decode) {
     const isRead = (options.method ?? "GET").toUpperCase() === "GET";
     const attempts = isRead ? READ_RETRIES : 1;
     let lastError;
 
     for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      const startedAt = Date.now();
       try {
         const response = await fetch(url, {
           ...options,
           signal: AbortSignal.timeout(this.timeoutMs),
           headers: {
-            Accept: "application/json",
             Authorization: `token ${this.token}`,
+            ...(decode === "json" ? { Accept: "application/json" } : {}),
             ...(options.body ? { "Content-Type": "application/json" } : {}),
             ...options.headers
           }
@@ -86,7 +109,9 @@ export class CodebergStorage {
 
         if (!response.ok) {
           const body = await response.text();
-          const error = new Error(`Codeberg API returned ${response.status}: ${body}`);
+          const error = new Error(
+            `Codeberg API (${this.labelFor(url, options)}) returned ${response.status}: ${body.slice(0, 200)}`
+          );
           error.status = response.status;
 
           if (isRead && RETRY_STATUSES.has(response.status) && attempt < attempts) {
@@ -98,15 +123,24 @@ export class CodebergStorage {
           throw error;
         }
 
-        return response.status === 204 ? null : response.json();
+        const result = decode === "json"
+          ? (response.status === 204 ? null : response.json())
+          : Buffer.from(await response.arrayBuffer());
+
+        const elapsedMs = Date.now() - startedAt;
+        if (elapsedMs > 2000) {
+          console.log(`[codeberg] slow call: ${this.labelFor(url, options)} took ${elapsedMs}ms`);
+        }
+
+        return result;
       } catch (error) {
         const retryable =
           isRead && attempt < attempts
           && (!error.status || RETRY_STATUSES.has(error.status));
 
-        if (!retryable) throw error;
+        if (!retryable) throw this.wrapError(error, url, options);
 
-        lastError = error;
+        lastError = this.wrapError(error, url, options);
         await sleep(750 * attempt);
       }
     }
@@ -114,50 +148,12 @@ export class CodebergStorage {
     throw lastError;
   }
 
+  async request(url, options = {}) {
+    return this.attemptFetch(url, options, "json");
+  }
+
   async requestRaw(url, options = {}) {
-    const isRead = (options.method ?? "GET").toUpperCase() === "GET";
-    const attempts = isRead ? READ_RETRIES : 1;
-    let lastError;
-
-    for (let attempt = 1; attempt <= attempts; attempt += 1) {
-      try {
-        const response = await fetch(url, {
-          ...options,
-          signal: AbortSignal.timeout(this.timeoutMs),
-          headers: {
-            Authorization: `token ${this.token}`,
-            ...options.headers
-          }
-        });
-
-        if (!response.ok) {
-          const body = await response.text();
-          const error = new Error(`Codeberg API returned ${response.status}: ${body}`);
-          error.status = response.status;
-
-          if (isRead && RETRY_STATUSES.has(response.status) && attempt < attempts) {
-            lastError = error;
-            await sleep(750 * attempt);
-            continue;
-          }
-
-          throw error;
-        }
-
-        return Buffer.from(await response.arrayBuffer());
-      } catch (error) {
-        const retryable =
-          isRead && attempt < attempts
-          && (!error.status || RETRY_STATUSES.has(error.status));
-
-        if (!retryable) throw error;
-
-        lastError = error;
-        await sleep(750 * attempt);
-      }
-    }
-
-    throw lastError;
+    return this.attemptFetch(url, options, "raw");
   }
 
   async readSnapshot() {
@@ -235,23 +231,27 @@ export class CodebergStorage {
   async readJournalOps(names) {
     if (names.length === 0) return [];
 
-    try {
-      const archive = await this.requestRaw(this.archiveUrl);
-      const entries = unzipSync(archive);
-      const ops = [];
+    if (names.length >= ARCHIVE_MIN_OPS) {
+      try {
+        const archive = await this.requestRaw(this.archiveUrl);
+        const entries = unzipSync(archive);
+        const ops = [];
 
-      for (const name of names) {
-        const entry = findZipEntry(entries, `${this.journalDir}/${name}`);
-        if (!entry) {
-          throw new Error(`Archive does not contain journal entry: ${name}`);
+        for (const name of names) {
+          const entry = findZipEntry(entries, `${this.journalDir}/${name}`);
+          if (!entry) {
+            throw new Error(`Archive does not contain journal entry: ${name}`);
+          }
+          ops.push(JSON.parse(entry.toString("utf8")));
         }
-        ops.push(JSON.parse(entry.toString("utf8")));
-      }
 
-      return ops.sort((a, b) => a.seq - b.seq);
-    } catch (error) {
-      return this.readJournalOpsIndividually(names);
+        return ops.sort((a, b) => a.seq - b.seq);
+      } catch (error) {
+        console.log(`[codeberg] archive read failed, falling back to individual reads: ${error.message}`);
+      }
     }
+
+    return this.readJournalOpsIndividually(names);
   }
 
   async compactJournal(uptoSeq) {

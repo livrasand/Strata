@@ -17,6 +17,9 @@ const CHANGES_URL = `${OPTIONS.apiUrl}/repos/${OPTIONS.owner}/${OPTIONS.repo}/co
 const JOURNAL_URL = `${OPTIONS.apiUrl}/repos/${OPTIONS.owner}/${OPTIONS.repo}/contents/${OPTIONS.journalDir}?ref=main`;
 const ARCHIVE_URL = `${OPTIONS.apiUrl}/repos/${OPTIONS.owner}/${OPTIONS.repo}/archive/main.zip`;
 
+// Mirrors the threshold in codeberg.js: batches below it skip the archive.
+const ARCHIVE_MIN_OPS = 16;
+
 function jsonResponse(status, payload) {
   return {
     ok: status >= 200 && status < 300,
@@ -56,15 +59,16 @@ function op(seq) {
 }
 
 test("readJournalOps downloads the pending journal in a single archive request (batch)", async () => {
-  const zip = buildStoredZip(
-    new Map([
-      ["db-main/data/snapshot.json", Buffer.from('{"journalSeq":0}\n', "utf8")],
-      ["db-main/data/journal/000001.json", Buffer.from(`${JSON.stringify(op(1))}\n`, "utf8")],
-      ["db-main/data/journal/000002.json", Buffer.from(`${JSON.stringify(op(2))}\n`, "utf8")],
-      ["db-main/data/journal/000003.json", Buffer.from(`${JSON.stringify(op(3))}\n`, "utf8")],
-      ["db-main/data/journal/notes.txt", Buffer.from("not a journal entry\n", "utf8")]
-    ])
-  );
+  const names = Array.from({ length: ARCHIVE_MIN_OPS }, (_, i) =>
+    `${String(i + 1).padStart(6, "0")}.json`);
+  const zip = buildStoredZip(new Map([
+    ["db-main/data/snapshot.json", Buffer.from('{"journalSeq":0}\n', "utf8")],
+    ...names.map((name, i) => [
+      `db-main/data/journal/${name}`,
+      Buffer.from(`${JSON.stringify(op(i + 1))}\n`, "utf8")
+    ]),
+    ["db-main/data/journal/notes.txt", Buffer.from("not a journal entry\n", "utf8")]
+  ]));
 
   const { calls, handler } = stubFetch(() => rawResponse(zip));
 
@@ -73,11 +77,12 @@ test("readJournalOps downloads the pending journal in a single archive request (
     globalThis.fetch = handler;
 
     const storage = new CodebergStorage(OPTIONS);
-    const loaded = await storage.readJournalOps(["000002.json", "000003.json", "000001.json"]);
+    const reversed = names.slice().reverse();
+    const loaded = await storage.readJournalOps(reversed);
 
     assert.deepEqual(
       loaded.map((entry) => entry.seq),
-      [1, 2, 3],
+      names.map((_, i) => i + 1),
       "operations come back sorted by seq regardless of request order"
     );
     assert.equal(loaded[1].value, 2);
@@ -91,6 +96,8 @@ test("readJournalOps downloads the pending journal in a single archive request (
 });
 
 test("readJournalOps falls back to individual requests when the archive is unavailable", async () => {
+  const names = Array.from({ length: ARCHIVE_MIN_OPS }, (_, i) =>
+    `${String(i + 1).padStart(6, "0")}.json`);
   const fileResponse = (seq) =>
     jsonResponse(200, {
       name: `${String(seq).padStart(6, "0")}.json`,
@@ -102,8 +109,39 @@ test("readJournalOps falls back to individual requests when the archive is unava
     if (call.href === ARCHIVE_URL) {
       return jsonResponse(404, { message: "archive not available" });
     }
-    if (/\/journal\/000001\.json/.test(call.href)) return fileResponse(1);
-    if (/\/journal\/000002\.json/.test(call.href)) return fileResponse(2);
+    const match = /\/journal\/(\d{6})\.json/.exec(call.href);
+    if (match) return fileResponse(Number(match[1]));
+    return jsonResponse(404, { message: "not found" });
+  });
+
+  const original = globalThis.fetch;
+  try {
+    globalThis.fetch = handler;
+
+    const storage = new CodebergStorage(OPTIONS);
+    const loaded = await storage.readJournalOps(names.slice().reverse());
+
+    assert.deepEqual(loaded.map((entry) => entry.seq), names.map((_, i) => i + 1));
+
+    const individual = calls.filter((call) => /\/journal\/\d{6}\.json/.test(call.href));
+    assert.equal(individual.length, names.length, "one per-file request per entry after the archive failed");
+    assert.ok(calls.some((call) => call.href === ARCHIVE_URL));
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test("readJournalOps reads small batches file-by-file without touching the archive", async () => {
+  const fileResponse = (seq) =>
+    jsonResponse(200, {
+      name: `${String(seq).padStart(6, "0")}.json`,
+      sha: `sha${seq}`,
+      content: Buffer.from(`${JSON.stringify(op(seq))}\n`).toString("base64")
+    });
+
+  const { calls, handler } = stubFetch((call) => {
+    const match = /\/journal\/(\d{6})\.json/.exec(call.href);
+    if (match) return fileResponse(Number(match[1]));
     return jsonResponse(404, { message: "not found" });
   });
 
@@ -115,10 +153,7 @@ test("readJournalOps falls back to individual requests when the archive is unava
     const loaded = await storage.readJournalOps(["000002.json", "000001.json"]);
 
     assert.deepEqual(loaded.map((entry) => entry.seq), [1, 2]);
-
-    const individual = calls.filter((call) => /\/journal\/00000[12]\.json/.test(call.href));
-    assert.equal(individual.length, 2, "exactly two per-file requests after the archive failed");
-    assert.ok(calls.some((call) => call.href === ARCHIVE_URL));
+    assert.ok(!calls.some((call) => call.href === ARCHIVE_URL), "the archive endpoint is not requested for small batches");
   } finally {
     globalThis.fetch = original;
   }
