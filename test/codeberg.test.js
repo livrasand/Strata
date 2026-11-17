@@ -159,6 +159,81 @@ test("readJournalOps reads small batches file-by-file without touching the archi
   }
 });
 
+test("listJournalMeta falls back to the git trees API when the contents listing fails", async () => {
+  const rootTree = jsonResponse(200, {
+    tree: [
+      { type: "blob", path: "snapshot.json", sha: "snapsha" },
+      { type: "tree", path: "data", sha: "datasha" }
+    ]
+  });
+  const dataTree = jsonResponse(200, {
+    tree: [{ type: "tree", path: "journal", sha: "journalsha" }]
+  });
+  const journalTree = jsonResponse(200, {
+    tree: [
+      { type: "blob", path: "000001.json", sha: "sha1" },
+      { type: "blob", path: "000002.json", sha: "sha2" },
+      { type: "blob", path: "notes.txt", sha: "notesha" },
+      { type: "tree", path: "sub", sha: "subsha" }
+    ]
+  });
+
+  const { calls, handler } = stubFetch((call) => {
+    if (/\/contents\/data\/journal\?ref=main$/.test(call.href)) {
+      // Simulate the Gitea contents-listing hang: gateway timeout.
+      return jsonResponse(504, { message: "gateway timeout" });
+    }
+    if (/\/git\/trees\/main$/.test(call.href)) return rootTree;
+    if (/\/git\/trees\/datasha$/.test(call.href)) return dataTree;
+    if (/\/git\/trees\/journalsha$/.test(call.href)) return journalTree;
+    return jsonResponse(404, { message: "not found" });
+  });
+
+  const original = globalThis.fetch;
+  try {
+    globalThis.fetch = handler;
+
+    const storage = new CodebergStorage(OPTIONS);
+    const meta = await storage.listJournalMeta();
+
+    assert.deepEqual(
+      meta.map((entry) => entry.name),
+      ["000001.json", "000002.json"],
+      "journal entries listed via git trees, sorted by seq"
+    );
+    assert.deepEqual(
+      meta.map((entry) => entry.sha),
+      ["sha1", "sha2"],
+      "blob shas are preserved so compactJournal can delete them"
+    );
+    assert.ok(calls.some((call) => /\/git\/trees\/main$/.test(call.href)));
+    assert.ok(calls.some((call) => /\/git\/trees\/journalsha$/.test(call.href)));
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test("listJournalMeta returns [] when the journal directory does not exist", async () => {
+  const { calls, handler } = stubFetch((call) => {
+    if (/\/contents\/data\/journal\?ref=main$/.test(call.href)) {
+      return jsonResponse(404, { message: "directory not found" });
+    }
+    return jsonResponse(404, { message: "not found" });
+  });
+
+  const original = globalThis.fetch;
+  try {
+    globalThis.fetch = handler;
+
+    const storage = new CodebergStorage(OPTIONS);
+    const meta = await storage.listJournalMeta();
+    assert.deepEqual(meta, [], "a missing journal dir means no pending ops");
+    assert.ok(!calls.some((call) => /\/git\/trees\//.test(call.href)), "404 short-circuits without the trees fallback");
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
 test("compactJournal deletes consolidated entries in a single multi-delete commit", async () => {
   const listing = jsonResponse(200, [
     { name: "000001.json", sha: "sha1" },

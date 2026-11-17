@@ -165,7 +165,7 @@ Node, Docker, Heroku, Render and Railway keep the original behaviour:
 | `CODEBERG_REPO` | Repository name |
 | `CODEBERG_BRANCH` | Branch (default `main`) |
 | `CODEBERG_FILE` | Snapshot file path (default `snapshot.json`) |
-| `CODEBERG_TIMEOUT_MS` | Hard cap per Codeberg HTTP round trip (default 10000). GETs retry up to 3 attempts on transient gateway errors (502/503/504); writes fail fast. |
+| `CODEBERG_TIMEOUT_MS` | Hard cap per Codeberg HTTP round trip (default 20000). GETs retry up to 3 attempts on transient gateway errors (502/503/504); writes fail fast. |
 | `CODEBERG_TOKEN` | Codeberg access token (read + write) |
 | `API_TOKEN` | Optional secret to protect the API |
 | `CORS_ORIGIN` | Optional exact origin of your app |

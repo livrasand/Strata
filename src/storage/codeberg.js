@@ -15,7 +15,7 @@ const COMPACT_CHUNK = 100;
 // a known slow path on Gitea/Codeberg (on-demand generation) and regularly
 // 504s on repos with heavy history, paying its cost on every load.
 const ARCHIVE_MIN_OPS = 16;
-const DEFAULT_TIMEOUT_MS = 10000;
+const DEFAULT_TIMEOUT_MS = 20000;
 const READ_RETRIES = 3;
 // Transient gateway failures from the git host: worth one more attempt.
 const RETRY_STATUSES = new Set([502, 503, 504]);
@@ -182,14 +182,48 @@ export class CodebergStorage {
       const entries = await this.request(url);
       if (!Array.isArray(entries)) return [];
 
-      return entries
-        .map((entry) => ({ name: entry.name, sha: entry.sha }))
-        .filter((entry) => parseJournalFileName(entry.name) !== null)
-        .sort((a, b) => parseJournalFileName(a.name) - parseJournalFileName(b.name));
+      return this.journalMetaFrom(entries);
     } catch (error) {
       if (error.status === 404) return [];
-      throw error;
+
+      // The Contents API directory listing is unreliable on Gitea for
+      // populated dirs (observed: hangs and 504s after ~45s while every
+      // other endpoint answers in seconds). Fall back to the git trees API.
+      return this.listJournalMetaViaTrees();
     }
+  }
+
+  journalMetaFrom(entries) {
+    return (Array.isArray(entries) ? entries : [])
+      .map((entry) => ({ name: entry.name, sha: entry.sha }))
+      .filter((entry) => parseJournalFileName(entry.name) !== null)
+      .sort((a, b) => parseJournalFileName(a.name) - parseJournalFileName(b.name));
+  }
+
+  /** Walks journalDir from the branch root tree via /git/trees. */
+  async listJournalMetaViaTrees() {
+    const segments = this.journalDir.split("/").filter(Boolean);
+    let ref = this.branch;
+
+    for (const segment of segments) {
+      const tree = await this.request(this.treeUrl(ref));
+      const match = (tree.tree ?? []).find(
+        (entry) => entry.type === "tree" && entry.path === segment
+      );
+      if (!match) return []; // directory absent → no journal entries
+      ref = match.sha;
+    }
+
+    const tree = await this.request(this.treeUrl(ref));
+    return this.journalMetaFrom(
+      (tree.tree ?? [])
+        .filter((entry) => entry.type === "blob")
+        .map((entry) => ({ name: entry.path, sha: entry.sha }))
+    );
+  }
+
+  treeUrl(ref) {
+    return `${this.apiUrl}/repos/${this.repoUrl()}/git/trees/${encodeURIComponent(ref)}`;
   }
 
   async listJournal() {
