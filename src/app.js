@@ -158,7 +158,8 @@ export function createApp({ env = process.env, storage, mode = LONG_MODE, log = 
   async function serverlessMutation(kind, key, body) {
     return withLock(async () => {
       for (let attempt = 1; attempt <= MUTATION_CONFLICT_RETRIES; attempt += 1) {
-        await ensureFresh({ force: true });
+        // A stale cached seq fails the strict journal append and is retried fresh.
+        await ensureFresh({ force: attempt > 1 || kind === "delete" });
 
         if (kind === "delete" && !Object.hasOwn(sync.database.records, key)) {
           return { ok: false, key };
