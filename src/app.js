@@ -321,7 +321,7 @@ export function createApp({ env = process.env, storage, mode = LONG_MODE, log = 
       }
 
       if (url.pathname === "/keys" && request.method === "GET") {
-        await (serverless ? ensureFresh({ force: true }) : ensureLoaded());
+        await (serverless ? ensureFresh() : ensureLoaded());
         return jsonResponse(200, { keys: listKeys(sync.database) });
       }
 
@@ -332,7 +332,7 @@ export function createApp({ env = process.env, storage, mode = LONG_MODE, log = 
       const key = decodeURIComponent(parts[1]);
 
       if (request.method === "GET") {
-        await (serverless ? ensureFresh({ force: true }) : ensureLoaded());
+        await (serverless ? ensureFresh() : ensureLoaded());
         const value = getRecord(sync.database, key);
         if (value === null) return jsonResponse(404, { error: "Key not found" });
         return jsonResponse(200, { key, value });
