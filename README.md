@@ -2,11 +2,7 @@
 
 # Strata
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Flivrasand%2Fstrata&env=STORAGE,CODEBERG_API,CODEBERG_OWNER,CODEBERG_REPO,CODEBERG_BRANCH,CODEBERG_FILE,CODEBERG_TOKEN,API_TOKEN,CORS_ORIGIN&envDescription=Environment%20variables%20needed%20to%20configure%20Strata&envLink=https%3A%2F%2Fgithub.com%2Flivrasand%2Fstrata%2Fblob%2Fmain%2FREADME.md)
-
-[![Deploy to Netlify](https://www.netlify.com/img/deploy/button.svg)](https://app.netlify.com/start/deploy?repository=https://github.com/livrasand/strata)
-
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/livrasand/strata)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Flivrasand%2Fstrata&env=STORAGE,CODEBERG_API,CODEBERG_OWNER,CODEBERG_REPO,CODEBERG_BRANCH,CODEBERG_FILE,CODEBERG_TOKEN,API_TOKEN,CORS_ORIGIN&envDescription=Environment%20variables%20needed%20to%20configure%20Strata&envLink=https%3A%2F%2Fgithub.com%2Flivrasand%2Fstrata%2Fblob%2Fmain%2FREADME.md) [![Deploy to Netlify](https://www.netlify.com/img/deploy/button.svg)](https://app.netlify.com/start/deploy?repository=https://github.com/livrasand/strata) [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/livrasand/strata)
 
 **The free key-value database that won't bill you when it becomes your product's backbone.**
 
