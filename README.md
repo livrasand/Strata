@@ -19,6 +19,9 @@ prefer — is a straightforward export, not a rewrite.
 
 </div>
 
+<img width="100%" src="https://github.com/user-attachments/assets/ac4352bd-d093-48ec-bdba-556d7a795efd" />
+
+
 ## 👋 Introduction
 
 Strata is a lightweight key-value store backed by Git (Codeberg) with an operation journal, periodic snapshots and an asynchronous publish queue. It runs on your own infrastructure and keeps data versioned and auditable.
