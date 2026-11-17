@@ -222,6 +222,12 @@ openssl rand -hex 32
 
 For a public API, set `CORS_ORIGIN` to the exact origin of your application.
 
+## In the wild
+
+**[Espresso](https://github.com/livrasand/espresso)** — a self-hosted Git forge for affordable hardware (ESP32 + SD card) — uses Strata as a Git-backed KV backend in its Node control plane. Strata stores session and coordination state over its REST API (`GET/PUT/DELETE /kv/:key`) so the service can run without a managed database while keeping storage auditable in Git.
+
+![Espresso using Strata-backed storage](./assets/screenshots/espresso.png)
+
 ## Tests
 
 ```sh
