@@ -32,6 +32,7 @@ const storage = new CodebergStorage({
   journalDir: env.CODEBERG_JOURNAL,
   token: env.CODEBERG_TOKEN,
   concurrency: env.CODEBERG_JOURNAL_CONCURRENCY,
+  compactChunk: env.CODEBERG_COMPACT_CHUNK,
   // The listing can be slow on repos in this state; give it room.
   timeoutMs: env.CODEBERG_TIMEOUT_MS ?? "30000"
 });

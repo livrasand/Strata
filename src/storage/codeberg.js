@@ -34,7 +34,8 @@ export class CodebergStorage {
     journalDir,
     token,
     concurrency = 8,
-    timeoutMs
+    timeoutMs,
+    compactChunk
   }) {
     if (!owner || !repo || !token) {
       throw new Error("CODEBERG_OWNER, CODEBERG_REPO and CODEBERG_TOKEN are required.");
@@ -53,6 +54,9 @@ export class CodebergStorage {
       this.apiUrl + "/repos/" + this.repoUrl() + "/archive/"
       + encodeURIComponent(this.branch) + ".zip";
     this.concurrency = Math.max(1, Number(concurrency) || 8);
+    // Files deleted per bulk commit. Large chunks make slow git hosts take
+    // minutes per commit; shrink it when the API is slow (JOURNAL_COMPACT_CHUNK).
+    this.compactChunk = Math.max(1, Number(compactChunk) || COMPACT_CHUNK);
     // Hard cap per HTTP round trip. Without it, a hung git-host request
     // stalls the serverless invocation until the platform kills it.
     this.timeoutMs = Math.max(1000, Number(timeoutMs) || DEFAULT_TIMEOUT_MS);
@@ -303,8 +307,8 @@ export class CodebergStorage {
 
     let removed = 0;
 
-    for (let offset = 0; offset < doomed.length; offset += COMPACT_CHUNK) {
-      const chunk = doomed.slice(offset, offset + COMPACT_CHUNK);
+    for (let offset = 0; offset < doomed.length; offset += this.compactChunk) {
+      const chunk = doomed.slice(offset, offset + this.compactChunk);
       const payload = {
         message: `journal: compact ${chunk.length} consolidated entries (up to seq ${uptoSeq})`,
         branch: this.branch,
