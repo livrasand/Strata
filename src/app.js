@@ -28,7 +28,8 @@ export function createStorage(env = process.env) {
       file: env.CODEBERG_FILE,
       journalDir: env.CODEBERG_JOURNAL,
       token: env.CODEBERG_TOKEN,
-      concurrency: env.CODEBERG_JOURNAL_CONCURRENCY
+      concurrency: env.CODEBERG_JOURNAL_CONCURRENCY,
+      timeoutMs: env.CODEBERG_TIMEOUT_MS
     });
   }
 
@@ -410,6 +411,9 @@ export function createApp({ env = process.env, storage, mode = LONG_MODE, log = 
         error.status === 400 ? 400 :
         error.status === 409 ? 409 :
         error.status === 413 ? 413 :
+        // Upstream (git host) gateway failures are not Strata's fault:
+        // surface them as 503 so clients can retry/fail fast cleanly.
+        (error.status === 502 || error.status === 503 || error.status === 504) ? 503 :
         500;
       return jsonResponse(status, { error: error.message });
     }

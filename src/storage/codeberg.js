@@ -11,6 +11,14 @@ import {
 } from "../journal.js";
 
 const COMPACT_CHUNK = 100;
+const DEFAULT_TIMEOUT_MS = 10000;
+const READ_RETRIES = 3;
+// Transient gateway failures from the git host: worth one more attempt.
+const RETRY_STATUSES = new Set([502, 503, 504]);
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 export class CodebergStorage {
   constructor({
@@ -21,7 +29,8 @@ export class CodebergStorage {
     file = "snapshot.json",
     journalDir,
     token,
-    concurrency = 8
+    concurrency = 8,
+    timeoutMs
   }) {
     if (!owner || !repo || !token) {
       throw new Error("CODEBERG_OWNER, CODEBERG_REPO and CODEBERG_TOKEN are required.");
@@ -40,6 +49,9 @@ export class CodebergStorage {
       this.apiUrl + "/repos/" + this.repoUrl() + "/archive/"
       + encodeURIComponent(this.branch) + ".zip";
     this.concurrency = Math.max(1, Number(concurrency) || 8);
+    // Hard cap per HTTP round trip. Without it, a hung git-host request
+    // stalls the serverless invocation until the platform kills it.
+    this.timeoutMs = Math.max(1000, Number(timeoutMs) || DEFAULT_TIMEOUT_MS);
   }
 
   repoUrl() {
@@ -55,43 +67,97 @@ export class CodebergStorage {
   }
 
   async request(url, options = {}) {
-    const response = await fetch(url, {
-      ...options,
-      headers: {
-        Accept: "application/json",
-        Authorization: `token ${this.token}`,
-        ...(options.body ? { "Content-Type": "application/json" } : {}),
-        ...options.headers
-      }
-    });
+    const isRead = (options.method ?? "GET").toUpperCase() === "GET";
+    const attempts = isRead ? READ_RETRIES : 1;
+    let lastError;
 
-    if (!response.ok) {
-      const body = await response.text();
-      const error = new Error(`Codeberg API returned ${response.status}: ${body}`);
-      error.status = response.status;
-      throw error;
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      try {
+        const response = await fetch(url, {
+          ...options,
+          signal: AbortSignal.timeout(this.timeoutMs),
+          headers: {
+            Accept: "application/json",
+            Authorization: `token ${this.token}`,
+            ...(options.body ? { "Content-Type": "application/json" } : {}),
+            ...options.headers
+          }
+        });
+
+        if (!response.ok) {
+          const body = await response.text();
+          const error = new Error(`Codeberg API returned ${response.status}: ${body}`);
+          error.status = response.status;
+
+          if (isRead && RETRY_STATUSES.has(response.status) && attempt < attempts) {
+            lastError = error;
+            await sleep(750 * attempt);
+            continue;
+          }
+
+          throw error;
+        }
+
+        return response.status === 204 ? null : response.json();
+      } catch (error) {
+        const retryable =
+          isRead && attempt < attempts
+          && (!error.status || RETRY_STATUSES.has(error.status));
+
+        if (!retryable) throw error;
+
+        lastError = error;
+        await sleep(750 * attempt);
+      }
     }
 
-    return response.status === 204 ? null : response.json();
+    throw lastError;
   }
 
   async requestRaw(url, options = {}) {
-    const response = await fetch(url, {
-      ...options,
-      headers: {
-        Authorization: `token ${this.token}`,
-        ...options.headers
-      }
-    });
+    const isRead = (options.method ?? "GET").toUpperCase() === "GET";
+    const attempts = isRead ? READ_RETRIES : 1;
+    let lastError;
 
-    if (!response.ok) {
-      const body = await response.text();
-      const error = new Error(`Codeberg API returned ${response.status}: ${body}`);
-      error.status = response.status;
-      throw error;
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      try {
+        const response = await fetch(url, {
+          ...options,
+          signal: AbortSignal.timeout(this.timeoutMs),
+          headers: {
+            Authorization: `token ${this.token}`,
+            ...options.headers
+          }
+        });
+
+        if (!response.ok) {
+          const body = await response.text();
+          const error = new Error(`Codeberg API returned ${response.status}: ${body}`);
+          error.status = response.status;
+
+          if (isRead && RETRY_STATUSES.has(response.status) && attempt < attempts) {
+            lastError = error;
+            await sleep(750 * attempt);
+            continue;
+          }
+
+          throw error;
+        }
+
+        return Buffer.from(await response.arrayBuffer());
+      } catch (error) {
+        const retryable =
+          isRead && attempt < attempts
+          && (!error.status || RETRY_STATUSES.has(error.status));
+
+        if (!retryable) throw error;
+
+        lastError = error;
+        await sleep(750 * attempt);
+      }
     }
 
-    return Buffer.from(await response.arrayBuffer());
+    throw lastError;
   }
 
   async readSnapshot() {
