@@ -76,8 +76,13 @@ export class CodebergStorage {
 
   /** Adds method + URL context to low-level (timeout/network) errors. */
   wrapError(error, url, options) {
-    if (error.status === undefined && !error.message.startsWith("Codeberg API")) {
-      error.message = `${this.labelFor(url, options)}: ${error.message}`;
+    const message = error?.message ?? String(error);
+    if (error?.status === undefined && !message.startsWith("Codeberg API")) {
+      // Some fetch failures (DOMException from the abort signal) expose
+      // `message` as a getter-only property: never mutate, wrap instead.
+      const wrapped = new Error(`${this.labelFor(url, options)}: ${message}`);
+      wrapped.cause = error;
+      return wrapped;
     }
     return error;
   }
